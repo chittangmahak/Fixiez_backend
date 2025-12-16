@@ -1,6 +1,14 @@
-import { User } from '../models/User';
+import dotenv from 'dotenv';
+dotenv.config();
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import { User } from '../models/User.js';
 
-const signUp = async (req, res) => {
+const signToken = (userId) => {
+  return jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
+};
+
+export const signup = async (req, res) => {
   try {
     const {
       firstName,
@@ -11,11 +19,10 @@ const signUp = async (req, res) => {
       city,
       pincode,
       password,
-      confirmPassword,
       profileImage,
     } = req.body;
 
-    // 1. Validate required fields
+    // basic validation
     if (
       !firstName ||
       !lastName ||
@@ -27,47 +34,178 @@ const signUp = async (req, res) => {
     ) {
       return res
         .status(400)
-        .json({ message: 'All required fields must be filled' });
+        .json({ message: 'All required fields must be provided.' });
     }
 
-    // 2. Validate password match
-    if (password !== confirmPassword) {
-      return res.status(400).json({ message: 'Passwords do not match' });
+    if (String(password).length < 6) {
+      return res
+        .status(400)
+        .json({ message: 'Password must be at least 6 characters.' });
     }
 
-    // 3. Check existing email
-    const emailExists = await User.findOne({ email });
-    if (emailExists) {
-      return res.status(400).json({ message: 'Email is already registered' });
+    // check existing email
+    const existing = await User.findOne({
+      email: String(email).toLowerCase().trim(),
+    });
+    if (existing) {
+      return res
+        .status(409)
+        .json({ message: 'Email already registered. Please login.' });
     }
 
-    // 4. Check existing phone
-    const phoneExists = await User.findOne({ phone });
-    if (phoneExists) {
-      return res.status(400).json({ message: 'Phone number already exists' });
-    }
+    // hash password
+    const hashed = await bcrypt.hash(password, 10);
 
-    // 5. Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // 6. Create user (do NOT save confirmPassword)
     const user = await User.create({
-      firstName,
-      lastName,
-      email,
-      phone,
-      officailAddress,
-      city,
-      pincode,
-      password: hashedPassword,
-      profileImage,
+      firstName: String(firstName).trim(),
+      lastName: String(lastName).trim(),
+      email: String(email).toLowerCase().trim(),
+      phone: String(phone).trim(),
+      officailAddress: officailAddress ? String(officailAddress).trim() : '',
+      city: String(city).trim(),
+      pincode: Number(pincode),
+      password: hashed,
+      profileImage: profileImage ? String(profileImage).trim() : '',
+    });
+
+    const token = signToken(user._id);
+
+    // never send password
+    const safeUser = {
+      id: user._id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      phone: user.phone,
+      officailAddress: user.officailAddress,
+      city: user.city,
+      pincode: user.pincode,
+      profileImage: user.profileImage,
+      createdAt: user.createdAt,
+    };
+
+    return res
+      .status(201)
+      .json({ message: 'Signup successful', user: safeUser, token });
+  } catch (err) {
+    // Handle mongoose unique error
+    if (err?.code === 11000) {
+      return res.status(409).json({ message: 'Email already exists.' });
+    }
+    console.error('Signup error:', err);
+    return res.status(500).json({ message: 'Server error in signup.' });
+  }
+};
+
+export const login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res
+        .status(400)
+        .json({ message: 'Email and password are required.' });
+    }
+
+    const user = await User.findOne({
+      email: String(email).toLowerCase().trim(),
+    });
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid email or password.' });
+    }
+
+    const ok = await bcrypt.compare(password, user.password);
+    if (!ok) {
+      return res.status(401).json({ message: 'Invalid email or password.' });
+    }
+
+    const token = signToken(user._id);
+
+    const safeUser = {
+      id: user._id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      phone: user.phone,
+      officailAddress: user.officailAddress,
+      city: user.city,
+      pincode: user.pincode,
+      profileImage: user.profileImage,
+      createdAt: user.createdAt,
+    };
+
+    return res
+      .status(200)
+      .json({ message: 'Login successful', user: safeUser, token });
+  } catch (err) {
+    console.error('Login error:', err);
+    return res.status(500).json({ message: 'Server error in login.' });
+  }
+};
+
+//verify authentication controller
+export const verifyAuth = async (req, res) => {
+  try {
+    // Get token from cookie
+    const token = req.cookies.token;
+
+    // console.log('token --> ', token);
+    // console.log('req --> ', req);
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'Not authenticated',
+      });
+    }
+
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
+
+    // Get user from database
+    const user = await Admin.findById(decoded.id).select('-password');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // Return user data
+    res.status(200).json({
+      success: true,
+      user,
+      message: 'Authenticated',
     });
   } catch (error) {
-    console.error('error having signup: ', error);
+    console.error('Error in verifyAuth:', error);
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid or expired token',
+    });
+  }
+};
+
+// Logout controller - Clear cookie
+export const logout = async (req, res) => {
+  try {
+    // Clear the cookie
+    res.clearCookie('token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Logged out successfully',
+    });
+  } catch (error) {
+    console.error('Error in logout:', error);
     return res.status(500).json({
       success: false,
-      message: 'failed to signup',
-      error: error.meassage,
+      message: error.message,
     });
   }
 };

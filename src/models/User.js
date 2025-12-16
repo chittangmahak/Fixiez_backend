@@ -19,24 +19,20 @@ const userSchema = mongoose.Schema(
       required: true,
       index: true,
     },
-
     phone: {
       type: String,
       required: true,
       trim: true,
       index: true,
     },
-
     officailAddress: {
       type: String,
     },
-
     city: {
       type: String,
       required: true,
       index: true,
     },
-
     pincode: {
       type: Number,
       required: true,
@@ -46,7 +42,6 @@ const userSchema = mongoose.Schema(
       required: true,
       trim: true,
     },
-
     profileImage: {
       type: String,
       trim: true,

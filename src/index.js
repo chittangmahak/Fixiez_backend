@@ -6,6 +6,8 @@ import express from 'express';
 import mongoose from 'mongoose';
 import { connectDB } from './config/database.js';
 
+import authRoutes from './routes/authRoutes.js';
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -19,6 +21,9 @@ app.use(
 );
 
 app.use(express.json());
+
+//routes
+app.use('/api/auth', authRoutes);
 
 // HTTP + WebSocket Server
 const server = http.createServer(app);
