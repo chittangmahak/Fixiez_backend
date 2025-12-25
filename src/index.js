@@ -3,7 +3,7 @@ dotenv.config();
 import http from 'http';
 import cors from 'cors';
 import express from 'express';
-import mongoose from 'mongoose';
+import cookieParser from 'cookie-parser';
 import { connectDB } from './config/database.js';
 
 import authRoutes from './routes/authRoutes.js';
@@ -21,16 +21,17 @@ app.use(
 );
 
 app.use(express.json());
+  app.use(cookieParser());
 
-//routes
-app.use('/api/auth', authRoutes);
+  //routes
+  app.use('/api/auth', authRoutes);
 
-// HTTP + WebSocket Server
-const server = http.createServer(app);
+  // HTTP + WebSocket Server
+  const server = http.createServer(app);
 
-connectDB()
-  .then(() => {
-    console.log('✅ MongoDB connected successfully');
+  connectDB()
+    .then(() => {
+      console.log('✅ MongoDB connected successfully');
   })
   .catch((err) => {
     console.error('❌ MongoDB connection error');

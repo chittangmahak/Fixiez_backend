@@ -146,40 +146,37 @@ export const login = async (req, res) => {
 //verify authentication controller
 export const verifyAuth = async (req, res) => {
   try {
-    // Get token from cookie
-    const token = req.cookies.token;
+    const cookieToken = req.cookies?.token;
 
-    // console.log('token --> ', token);
-    // console.log('req --> ', req);
+    const authHeader = req.headers.authorization;
+    const bearerToken =
+      authHeader && authHeader.startsWith('Bearer ')
+        ? authHeader.split(' ')[1]
+        : null;
+
+    const token = cookieToken || bearerToken;
 
     if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'Not authenticated',
-      });
+      return res
+        .status(401)
+        .json({ success: false, message: 'Not authenticated' });
     }
 
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Get user from database
-    const user = await Admin.findById(decoded.id).select('-password');
-
+    const user = await User.findById(decoded.id).select('-password');
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found',
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: 'User not found' });
     }
 
-    // Return user data
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       user,
       message: 'Authenticated',
     });
   } catch (error) {
-    console.error('Error in verifyAuth:', error);
     return res.status(401).json({
       success: false,
       message: 'Invalid or expired token',
